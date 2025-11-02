@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>Reindirizzamento...</title>
+  <meta http-equiv="refresh" content="0; url=/First_Aid_Manager/" />
+</head>
+<body>
+  <p>Reindirizzamento alla homepage...</p>
+  <script>
+    try {
+      // Reindirizza alla homepage del sito GitHub Pages
+      var base = '/First_Aid_Manager/';
+      // Se il sito è servito da un dominio personalizzato, prova a dedurre la base
+      if (location.hostname !== 'github.io') {
+        base = '/First_Aid_Manager/';
+      }
+      window.location.replace(base);
+    } catch (e) {
+      // Fallback
+      window.location.href = '/First_Aid_Manager/';
+    }
+  </script>
+</body>
+</html>
