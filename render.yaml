@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: first-aid-manager
+    env: node
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "node server.js"
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 18
+      - key: EMAIL_PROVIDER
+        value: brevo
+      - key: BREVO_SENDER_EMAIL
+        value: assistenza.tecnica@isokit.it
+      - key: BREVO_SENDER_NAME
+        value: Assistenza Tecnica ISOKIT
+      - key: LOG_LEVEL
+        value: info
+      # Set as secrets in Render dashboard
+      - key: BREVO_API_KEY
+        sync: false
+      - key: API_KEY
+        sync: false
+    disk:
+      name: app-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

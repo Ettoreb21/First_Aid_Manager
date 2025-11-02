@@ -1,0 +1,26 @@
+{
+  "operatore": "Operatore 1",
+  "location": "Sede Principale",
+  "kits": [
+    {
+      "codice": "Kit-A",
+      "ubicazione": "Ufficio",
+      "articoli": [
+        {
+          "codice": "A1",
+          "descrizione": "Ghiaccio istantaneo",
+          "quantita": 1,
+          "scadenza": "2025-12-31",
+          "stato": "idoneo"
+        },
+        {
+          "codice": "A2",
+          "descrizione": "Cerotti",
+          "quantita": 0,
+          "scadenza": "2024-10-31",
+          "stato": "scaduto"
+        }
+      ]
+    }
+  ]
+}

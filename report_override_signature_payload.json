@@ -1,0 +1,27 @@
+{
+  "operatore": "Giulia Bianchi",
+  "operatorSignature": "assets/firme/admin.png",
+  "location": "Sede Principale - Test Override",
+  "dateLongFormat": true,
+  "thresholdDays": 90,
+  "revision": "Rev.05",
+  "logoPath": "assets/loghi/logo_1760985600117.png",
+  "kits": [
+    {
+      "codice": "KIT001",
+      "ubicazione": "Magazzino A",
+      "articoli": [
+        { "codice": "A01", "descrizione": "Cerotti assortiti", "quantita": 10, "scadenza": "2026-06-30", "stato": "idoneo" },
+        { "codice": "A02", "descrizione": "Gaze sterili", "quantita": 4, "scadenza": "2025-12-31", "stato": "da_controllare" }
+      ]
+    },
+    {
+      "codice": "KIT002",
+      "ubicazione": "Magazzino B",
+      "articoli": [
+        { "codice": "B01", "descrizione": "Disinfettante", "quantita": 1, "scadenza": "2024-12-01", "stato": "scaduto" },
+        { "codice": "B02", "descrizione": "Guanti monouso", "quantita": 50, "scadenza": "2027-03-15", "stato": "idoneo" }
+      ]
+    }
+  ]
+}

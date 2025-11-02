@@ -1,0 +1,33 @@
+{
+  "esversion": 11,
+  "browser": true,
+  "node": true,
+  "jquery": true,
+  "strict": false,
+  "globalstrict": false,
+  "undef": true,
+  "unused": true,
+  "predef": [
+    "console",
+    "alert",
+    "confirm",
+    "prompt",
+    "localStorage",
+    "sessionStorage",
+    "fetch",
+    "FormData",
+    "URLSearchParams",
+    "Blob",
+    "FileReader",
+    "URL",
+    "Worker",
+    "SharedWorker",
+    "ServiceWorker",
+    "Notification",
+    "navigator",
+    "location",
+    "history",
+    "document",
+    "window"
+  ]
+}

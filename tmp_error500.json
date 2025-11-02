@@ -1,0 +1,20 @@
+{
+  "revisione": { "versione": "Rev.07" },
+  "company": { "logo_path": "" },
+  "user": { "nome_operatore": "Ettore Bottin" },
+  "report": {
+    "data": {
+      "descrizione": "Errore 500 durante la generazione PDF.",
+      "analisi": "ClassPath Java e path output non robusti su Windows.",
+      "logs": [
+        "EADDRINUSE su 3001 risolto con Stop-Process",
+        "ENOENT su rename PDF mitigato con ricerca multi-directory",
+        "Connection refused dovuto a terminale condiviso"
+      ],
+      "causa": "Classpath e path inconsistent; server non persistente.",
+      "soluzione": "Correzione delimiter classpath e ricerca multi-path PDF.",
+      "test": "POST /report/generate; verifica download; risposta 200.",
+      "stato": "HTTP 200; PDF generato correttamente."
+    }
+  }
+}

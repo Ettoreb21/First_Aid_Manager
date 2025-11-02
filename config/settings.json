@@ -1,0 +1,59 @@
+{
+  "report": {
+    "revisione": "Rev.05",
+    "logo_path": "assets/loghi/logo_1762011311034.png",
+    "template_path": "templates/rapporto_cassette.html",
+    "output_path": "report/rapporto_cassette.pdf",
+    "date_long_format": false,
+    "firma_dir": "assets/firme"
+  },
+  "company": {
+    "name": "ISOKIT Srl",
+    "address": "",
+    "default_location": "Sede Principale"
+  },
+  "email": {
+    "schedule": {
+      "start_date": "",
+      "frequency_days": 0,
+      "send_time": ""
+    },
+    "notifications": {
+      "recipients": [
+        "assistenza.tecnica@isokit.it"
+      ],
+      "subject_prefix": "[AssistBot]"
+    }
+  },
+  "operatori": [
+    {
+      "id": 1,
+      "nome": "Admin",
+      "ruolo": "admin",
+      "firma_png_path": "assets/firme/admin.png"
+    },
+    {
+      "id": 2,
+      "nome": "Operatore 1",
+      "ruolo": "operator",
+      "firma_png_path": "assets/firme/operatore_1.png"
+    },
+    {
+      "id": 3,
+      "nome": "Operatore 2",
+      "ruolo": "operator",
+      "firma_png_path": "assets/firme/operatore_2.png"
+    }
+  ],
+  "scadenze": {
+    "soglia_giorni": 90,
+    "stati_non_idonei": [
+      "Scaduto",
+      "Quarantena",
+      "Richiamo"
+    ]
+  },
+  "verification_report": {
+    "logo_path": "assets/loghi/logo_1762011311034.png"
+  }
+}

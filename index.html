@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestione Primo Soccorso</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="theme.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-first-aid"></i> Gestione Primo Soccorso</h1>
+                <div class="header-actions">
+                    <button id="theme-toggle" class="theme-toggle" title="Cambia tema" aria-label="Cambia tema">
+                        <i class="fas fa-sun"></i>
+                    </button>
+                    <div class="auth-controls" style="display:flex; gap:8px; align-items:center; margin-left:12px;">
+                        <span id="current-user-display" class="user-display" title="Utente corrente" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-label="Utente corrente">
+                            <i class="fas fa-user-circle" aria-hidden="true"></i>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-section="overall">
+                <i class="fas fa-dashboard"></i> Panoramica
+            </button>
+            <button class="nav-tab" data-section="warehouse">
+                <i class="fas fa-warehouse"></i> Armadio
+            </button>
+            <button class="nav-tab" data-section="kits">
+                <i class="fas fa-briefcase-medical"></i> Kit
+            </button>
+            <button class="nav-tab" data-section="reports">
+                <i class="fas fa-file-alt"></i> Rapporti
+            </button>
+            <button class="nav-tab" data-section="orders">
+                <i class="fas fa-shopping-cart"></i> Richieste d'ordine
+            </button>
+            <button class="nav-tab" data-section="email">
+                <i class="fas fa-mail-bulk"></i> Email
+            </button>
+            <button class="nav-tab" data-section="settings">
+                <i class="fas fa-cog"></i> Impostazioni
+            </button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="main-actions" style="display:flex; gap:8px; justify-content:flex-end; margin: 12px 0;"></div>
+            <!-- Overall Section -->
+            <section id="overall" class="section active">
+                <div class="section-header">
+                    <h2>Pannello di Controllo</h2>
+                    <div class="current-date">Mese Corrente: <span id="current-month"></span></div>
+                </div>
+                
+                <div class="dashboard-grid">
+                    <!-- Expiring Items -->
+                    <div class="card">
+                        <div class="card-header warning">
+                            <h3><i class="fas fa-exclamation-triangle"></i> Articoli in Scadenza Questo Mese</h3>
+                        </div>
+                        <div class="card-content">
+                            <div id="expiring-items" class="items-list">
+                                <!-- Dynamic content -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Zero Quantity Items -->
+                    <div class="card">
+                        <div class="card-header danger">
+                            <h3><i class="fas fa-times-circle"></i> Articoli con Quantità Zero</h3>
+                        </div>
+                        <div class="card-content">
+                            <div id="zero-quantity-items" class="items-list">
+                                <!-- Dynamic content -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Expired Items -->
+                    <div class="card">
+                        <div class="card-header expired">
+                            <h3><i class="fas fa-ban"></i> Articoli Scaduti</h3>
+                        </div>
+                        <div class="card-content">
+                            <div id="expired-items" class="items-list">
+                                <!-- Dynamic content -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Warehouse Section -->
+            <section id="warehouse" class="section">
+                <div class="section-header">
+                    <h2>Armadio</h2>
+                    <button id="add-warehouse-item" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Aggiungi Articolo
+                    </button>
+                </div>
+                
+                <div class="warehouse-content">
+                    <!-- Non-expired Items -->
+                    <div class="card">
+                        <div class="card-header success">
+                            <h3><i class="fas fa-check-circle"></i> Articoli Non Scaduti (FIFO)</h3>
+
+                        </div>
+                        <div class="card-content">
+                            <div id="warehouse-filters" class="filters-bar" role="region" aria-label="Filtri magazzino non scaduti">
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-code">Codice</label>
+                                    <input id="filter-code" class="filter-input" type="text" placeholder="Es. 1234" />
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-name">Nome</label>
+                                    <input id="filter-name" class="filter-input" type="text" placeholder="Es. Garza" />
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-quantity-select">Quantità</label>
+                                    <select id="filter-quantity-select" class="filter-select">
+                                        <option value="">Tutti</option>
+                                    </select>
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-expiry-month-select">Mese Scadenza</label>
+                                    <select id="filter-expiry-month-select" class="filter-select">
+                                        <option value="">Tutti</option>
+                                    </select>
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-expiry-year-select">Anno Scadenza</label>
+                                    <select id="filter-expiry-year-select" class="filter-select">
+                                        <option value="">Tutti</option>
+                                    </select>
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-notes">Note</label>
+                                    <input id="filter-notes" class="filter-input" type="text" placeholder="Es. armadietto A" />
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table id="warehouse-items-table" class="data-table">
+                                    <colgroup>
+                                        <col style="width:16%">
+                                        <col style="width:24%">
+                                        <col style="width:10%">
+                                        <col style="width:18%">
+                                        <col style="width:22%">
+                                        <col style="width:10%">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>Codice</th>
+                                            <th>Nome</th>
+                                            <th>Quantità</th>
+                                            <th>Scadenza</th>
+                                            <th>Note</th>
+                                            <th>Azioni</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Dynamic content -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Expired Items -->
+                    <div class="card">
+                        <div class="card-header expired">
+                            <h3><i class="fas fa-ban"></i> Articoli Scaduti</h3>
+
+                        </div>
+                        <div class="card-content">
+                            <div id="warehouse-expired-filters" class="filters-bar" role="region" aria-label="Filtri magazzino scaduti">
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-exp-code">Codice</label>
+                                    <input id="filter-exp-code" class="filter-input" type="text" placeholder="Es. 5678" />
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-exp-name">Nome</label>
+                                    <input id="filter-exp-name" class="filter-input" type="text" placeholder="Es. Benda" />
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-exp-quantity-select">Quantità</label>
+                                    <select id="filter-exp-quantity-select" class="filter-select">
+                                        <option value="">Tutti</option>
+                                    </select>
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-exp-expiry-month-select">Mese Scadenza</label>
+                                    <select id="filter-exp-expiry-month-select" class="filter-select">
+                                        <option value="">Tutti</option>
+                                    </select>
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-exp-expiry-year-select">Anno Scadenza</label>
+                                    <select id="filter-exp-expiry-year-select" class="filter-select">
+                                        <option value="">Tutti</option>
+                                    </select>
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                                <div class="filter-field input-group">
+                                    <label class="search-label" for="filter-exp-notes">Note</label>
+                                    <input id="filter-exp-notes" class="filter-input" type="text" placeholder="Es. armadietto B" />
+                                    <button type="button" class="btn btn-clear btn-secondary" title="Pulisci" aria-label="Pulisci">×</button>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table id="warehouse-expired-table" class="data-table">
+                                    <colgroup>
+                                        <col style="width:16%">
+                                        <col style="width:24%">
+                                        <col style="width:10%">
+                                        <col style="width:18%">
+                                        <col style="width:22%">
+                                        <col style="width:10%">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>Codice</th>
+                                            <th>Nome</th>
+                                            <th>Quantità</th>
+                                            <th>Scadenza</th>
+                                            <th>Note</th>
+                                            <th>Azioni</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Dynamic content -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Kits Section -->
+            <section id="kits" class="section">
+                <div class="section-header">
+                    <h2>Kit di Primo Soccorso</h2>
+                    <div class="section-actions" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                        <button id="add-kit" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Aggiungi Nuovo Kit
+                        </button>
+                        <button id="export-kits-excel" class="btn btn-secondary" title="Esporta kit in Excel">
+                            <i class="fas fa-file-export"></i> Esporta Excel
+                        </button>
+                        <button id="import-kits-excel" class="btn btn-secondary" title="Importa kit da Excel">
+                            <i class="fas fa-file-import"></i> Importa Excel
+                        </button>
+                        <button id="download-kits-template" class="btn btn-secondary" title="Scarica template Excel con intestazioni">
+                            <i class="fas fa-file-alt"></i> Scarica Template
+                        </button>
+                        <input type="file" id="import-kits-file" accept=".xlsx,.xls" style="display:none;" />
+                    </div>
+                </div>
+                
+                <div class="kits-container" id="kits-container">
+                    <!-- Dynamic content -->
+                </div>
+            </section>
+
+            <!-- Reports Section -->
+            <section id="reports" class="section">
+                <div class="section-header">
+                    <h2>Rapporti e Documentazione</h2>
+                </div>
+                
+                <!-- Sezione Dati Documento rimossa su richiesta -->
+                
+                <!-- Sezione Configurazione Rapporto rimossa su richiesta -->
+                
+                <!-- Sezione Anteprima Rapporto rimossa su richiesta -->
+                
+                <div class="reports-grid">
+                    <div class="card">
+                        <div class="card-header success">
+                            <h3><i class="fas fa-history"></i> Storico Rapporti</h3>
+                        </div>
+                        <div class="card-content">
+                            <div id="reports-history">
+                                <!-- Dynamic content -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Email Section -->
+        <section id="email" class="section">
+                <div class="section-header">
+                    <h2>Notifiche Email</h2>
+                </div>
+                
+                <div class="email-content">
+                    <!-- Email Templates -->
+                    <div class="card" id="email-sender-card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-user"></i> Mittente configurato</h3>
+                        </div>
+                        <div class="card-content">
+                            <div class="form-group">
+                                <label>Reply-to utilizzato per le notifiche:</label>
+                                <div id="email-sender-display" class="form-control" style="background:#f7f7f7; cursor:default;" title="Questo è l'indirizzo impostato nelle configurazioni SMTP come reply-to."></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-envelope-open-text"></i> Modelli Email</h3>
+                        </div>
+                        <div class="card-content">
+                            <div class="email-templates">
+                                <div class="template-section">
+                                    <h4>Notifica Materiali Critici (Zero + Scadenze)</h4>
+                                    <div class="form-group">
+                                        <label for="critical-recipient">Destinatario:</label>
+                                        <input type="email" id="critical-recipient" class="form-control" placeholder="es. responsabile.magazzino@azienda.it">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="critical-subject">Oggetto:</label>
+                                        <input type="text" id="critical-subject" class="form-control" placeholder="Notifica Materiali Critici">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="critical-body">Corpo:</label>
+                                        <textarea id="critical-body" class="form-control" rows="8" placeholder="Gentile Team,\n\nDi seguito l'elenco dei materiali critici (quantità zero e in scadenza):\n\n[TABLE]\n\nCordiali saluti"></textarea>
+                                    </div>
+                                    <div id="critical-preview" class="email-preview" style="margin-top:10px; border:1px solid #ddd; padding:10px; background:#fafafa"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="email-actions">
+                                <button id="send-critical-email" class="btn btn-secondary">
+                                    <i class="fas fa-paper-plane"></i> Invia Notifica Materiali Critici
+                                </button>
+                                <span id="critical-status" class="status-indicator" aria-live="polite" style="font-size:0.95em; color:#555;"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+        </section>
+
+        <section id="orders" class="section">
+            <div class="section-header">
+                <h2>Richieste d'ordine</h2>
+            </div>
+            <div class="card" style="margin-bottom:12px;">
+                <div class="card-content">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Filtri articoli:</label>
+                            <div class="form-inline">
+                                <label style="margin-right:12px;"><input type="radio" name="order-filter" value="expiring" /> Solo in scadenza</label>
+                                <label style="margin-right:12px;"><input type="radio" name="order-filter" value="zero" /> Solo quantità 0</label>
+                                <label><input type="radio" name="order-filter" value="both" checked /> Entrambi</label>
+                            </div>
+                        </div>
+                        
+                    </div>
+                    <div class="form-actions">
+<!-- Pulsante 'Genera PDF Richiesta d'ordine' rimosso -->
+                    </div>
+                    <div id="order-pdf-errors" class="text-danger" style="margin-top:8px; display:none;"></div>
+                </div>
+            </div>
+            <div id="order-request-items" class="items-list"></div>
+            <div class="section-header" style="margin-top:16px;">
+                <h3>Articoli in scadenza (mese corrente)</h3>
+            </div>
+            <div id="order-expiring-items" class="items-list"></div>
+        </section>
+
+            <!-- Settings Section -->
+        <section id="settings" class="section">
+                <div class="section-header">
+                    <h2>Impostazioni</h2>
+                </div>
+                
+                <div class="settings-tabs">
+                    <button class="settings-tab active" data-tab="general">
+                        <i class="fas fa-cog"></i> Generali
+                    </button>
+                    <button class="settings-tab" data-tab="smtp">
+                        <i class="fas fa-envelope"></i> SMTP
+                    </button>
+                    <button class="settings-tab" data-tab="materials">
+                        <i class="fas fa-boxes"></i> Anagrafica
+                    </button>
+                    <button class="settings-tab" data-tab="users">
+                        <i class="fas fa-users"></i> Utenti
+                    </button>
+                    <button class="settings-tab" data-tab="reports">
+                        <i class="fas fa-file-alt"></i> Rapporti
+                    </button>
+                </div>
+                
+                <div id="settings-panel" class="settings-panel">
+                    <!-- Dynamic content based on selected tab -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div id="modal" class="modal">
+            <div class="modal-header">
+                <h3 id="modal-title">Modal Title</h3>
+                <button id="modal-close" class="modal-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="modal-content" class="modal-content">
+                <!-- Dynamic content -->
+            </div>
+            <div id="modal-footer" class="modal-footer">
+                <!-- Dynamic buttons -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIP9h5qVjT5l2Uu8B6e1fAq3pTzJQwYBzQ8S2oZ8QJc3kFZQYfEo6V4n3j6F0S2mQ7s8vJqfM7lJ9pYQx0nA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="app.js?v=kit-standard-7"></script>
+    <script>
+      (function(){
+        function getRole(){
+          try { return (window.currentUserRole || 'ospite').toLowerCase(); } catch(_) { return 'ospite'; }
+        }
+
+        const baseSections = ['overall', 'warehouse', 'kits', 'reports', 'orders', 'settings', 'email'];
+        function getEditableSectionsForRole(role){
+          if (role === 'master' || role === 'amministratore') {
+            return new Set(baseSections);
+          }
+          // Ospite: consenti solo aree sicure (es. rapporti e email)
+          return new Set(['reports', 'email']);
+        }
+
+        let editableSections = getEditableSectionsForRole(getRole());
+
+        const alwaysEnabledSelectors = [
+          '.nav-tab',
+          '#theme-toggle',
+          '#print-report',
+          
+          '#modal-close',
+          '.modal-close',
+          '#login-btn',
+          '#logout-btn',
+          '#user-logout-btn',
+          '#current-user-display',
+          '#auth-controls'
+        ];
+        // Contenitori che non devono essere bloccati (es. barra azioni principali)
+        const alwaysEnabledContainers = [
+          '.main-actions',
+          '.auth-controls'
+        ];
+
+        function isAlwaysEnabled(el){
+          try { return alwaysEnabledSelectors.some(sel => el.matches(sel)); }
+          catch(_) { return false; }
+        }
+
+        function isInEditableSection(target) {
+          try {
+            const section = target.closest && target.closest('.section');
+            if (section) return editableSections.has(section.id);
+            // Considera il modal come area editabile
+            const inModal = target.closest && target.closest('#modal');
+            return !!inModal;
+          } catch(_) { return false; }
+        }
+
+        function toggleElements(scope, editable) {
+          try {
+            const els = scope.querySelectorAll('input, textarea, button, label, div');
+            els.forEach(el => {
+              const tag = (el.tagName || '').toLowerCase();
+              if (editable) {
+                // Enable editing in editable sections
+                try {
+                  el.removeAttribute('readonly');
+                  el.removeAttribute('aria-readonly');
+                  el.removeAttribute('disabled');
+                  el.removeAttribute('aria-disabled');
+                  el.classList.remove('readonly-block');
+                } catch(_) {}
+              } else {
+                // Block editing elsewhere
+                try {
+                  if (tag === 'input' || tag === 'textarea') {
+                    el.setAttribute('readonly','readonly');
+                    el.setAttribute('aria-readonly','true');
+                    el.setAttribute('disabled','disabled');
+                    el.setAttribute('aria-disabled','true');
+                    el.classList.add('readonly-block');
+                  } else if (tag === 'button') {
+                    // Keep navigation and safe controls clickable
+                    if (!isAlwaysEnabled(el)) {
+                      el.setAttribute('disabled','disabled');
+                      el.setAttribute('aria-disabled','true');
+                      el.classList.add('readonly-block');
+                    } else {
+                      el.removeAttribute('disabled');
+                      el.removeAttribute('aria-disabled');
+                      el.classList.remove('readonly-block');
+                    }
+                  } else if (tag === 'label' || tag === 'div') {
+                    // Non bloccare i contenitori whitelisted (es. .main-actions)
+                    const isWhitelistedContainer = alwaysEnabledContainers.some(sel => {
+                      try { return el.matches(sel) || (el.closest && el.closest(sel)); } catch(_) { return false; }
+                    });
+                    if (!isWhitelistedContainer) {
+                      // For non-editable areas, visually block but don't interfere with layout
+                      el.setAttribute('aria-disabled','true');
+                      el.classList.add('readonly-block');
+                    } else {
+                      el.removeAttribute('aria-disabled');
+                      el.classList.remove('readonly-block');
+                    }
+                  }
+                } catch(_) {}
+              }
+            });
+          } catch(_) {}
+        }
+
+        function applyPermissions() {
+          try {
+            // Ricalcola sezioni editabili in base al ruolo corrente
+            editableSections = getEditableSectionsForRole(getRole());
+            const sections = document.querySelectorAll('.section');
+            sections.forEach(section => {
+              const editable = editableSections.has(section.id);
+              toggleElements(section, editable);
+            });
+            // Also handle controls outside any section (header/nav/etc.)
+            const allEls = document.querySelectorAll('input, textarea, button, label, div');
+            allEls.forEach(el => {
+              const editable = isInEditableSection(el);
+              // Toggle individually based on containment
+              try {
+                const tag = (el.tagName || '').toLowerCase();
+                if (editable) {
+                  el.removeAttribute('readonly');
+                  el.removeAttribute('aria-readonly');
+                  el.removeAttribute('disabled');
+                  el.removeAttribute('aria-disabled');
+                  el.classList.remove('readonly-block');
+                } else {
+                  if (tag === 'input' || tag === 'textarea') {
+                    el.setAttribute('readonly','readonly');
+                    el.setAttribute('aria-readonly','true');
+                    el.setAttribute('disabled','disabled');
+                    el.setAttribute('aria-disabled','true');
+                    el.classList.add('readonly-block');
+                  } else if (tag === 'button') {
+                    if (!isAlwaysEnabled(el)) {
+                      el.setAttribute('disabled','disabled');
+                      el.setAttribute('aria-disabled','true');
+                      el.classList.add('readonly-block');
+                    } else {
+                      el.removeAttribute('disabled');
+                      el.removeAttribute('aria-disabled');
+                      el.classList.remove('readonly-block');
+                    }
+                  } else if (tag === 'label' || tag === 'div') {
+                    const isWhitelistedContainer = alwaysEnabledContainers.some(sel => {
+                      try { return el.matches(sel) || (el.closest && el.closest(sel)); } catch(_) { return false; }
+                    });
+                    if (!isWhitelistedContainer) {
+                      el.setAttribute('aria-disabled','true');
+                      el.classList.add('readonly-block');
+                    } else {
+                      el.removeAttribute('aria-disabled');
+                      el.classList.remove('readonly-block');
+                    }
+                  }
+                }
+              } catch(_) {}
+            });
+          } catch(_) {}
+        }
+
+        function installGlobalBlockers() {
+          const blockers = ['beforeinput','keydown','paste','drop','click'];
+          blockers.forEach(evt => {
+            document.addEventListener(evt, function(e){
+              const t = e.target;
+              if (!isInEditableSection(t)) {
+                // Allow focus traversal on buttons, but prevent activation
+                if (evt === 'click' && (t.tagName||'').toLowerCase() === 'button') {
+                  if (isAlwaysEnabled(t)) {
+                    return; // allow click on whitelisted controls
+                  }
+                  e.preventDefault(); e.stopPropagation(); return;
+                }
+                // Block any edit attempts for inputs/textarea outside editable sections
+                if (['beforeinput','keydown','paste','drop'].includes(evt)) {
+                  e.preventDefault(); e.stopPropagation(); return;
+                }
+              }
+            }, { capture: true });
+          });
+        }
+
+        function installObservers() {
+          try {
+            const observer = new MutationObserver(function(mutations){
+              let needsApply = false;
+              mutations.forEach(function(m){
+                if (m.type === 'attributes' && m.attributeName === 'class' && m.target.classList && m.target.classList.contains('section')) {
+                  needsApply = true;
+                }
+                if (m.addedNodes && m.addedNodes.length > 0) {
+                  needsApply = true;
+                }
+              });
+              if (needsApply) applyPermissions();
+            });
+            observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+          } catch(_) {}
+        }
+
+        document.addEventListener('DOMContentLoaded', function(){
+          applyPermissions();
+          installGlobalBlockers();
+          installObservers();
+          // Re-apply on nav tab clicks to be safe
+          document.addEventListener('click', function(e){
+            const btn = e.target.closest && e.target.closest('.nav-tab');
+            if (btn) setTimeout(applyPermissions, 0);
+          }, true);
+          // Re-apply when ruolo utente cambia (eventi emessi da app.js)
+          document.addEventListener('user-role-changed', function(){
+            applyPermissions();
+          });
+          document.addEventListener('role-changed', function(){
+            applyPermissions();
+          });
+        });
+      })();
+    </script>
+    
+</body>
+</html>

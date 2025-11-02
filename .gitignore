@@ -1,0 +1,23 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Env & secrets
+.env
+.env.*
+outbox.json
+
+# Generated outputs & logs
+output/
+reports/output/
+logs/
+temp/
+
+# Database / binaries
+materials.sqlite
+*.class
+target/
+
+# OS files
+.DS_Store
+Thumbs.db

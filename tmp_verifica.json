@@ -1,0 +1,18 @@
+﻿{
+  "revisione": { "versione": "Rev.05" },
+  "user": { "nome_operatore": "Mario Rossi" },
+  "report": {
+    "data": {
+      "text": "Test",
+      "kits": [
+        {
+          "codice": "KIT-001",
+          "ubicazione": "Reparto A",
+          "articoli": [
+            { "codice": "A01", "descrizione": "Garze", "quantita": 10 }
+          ]
+        }
+      ]
+    }
+  }
+}

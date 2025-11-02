@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>Rapporto Cassette di Primo Soccorso</title>
+  <style>
+    /* Impostazioni di stampa */
+    @page {
+      size: A4;
+      margin: 10mm;
+    }
+    html, body {
+      padding: 0;
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #1a1a1a;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      /* Evita pagina vuota finale: non forzare page break */
+      page-break-after: auto;
+      position: relative;
+    }
+    .report-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 2px solid #1a1a1a;
+      padding-bottom: 4px;
+      margin-bottom: 6px;
+      min-height: 42px;
+    }
+    /* Requisito: div per immagine in alto a sinistra */
+    #logo-top-left {
+      width: 140px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    #logo-top-left img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .header-info {
+      display: flex;
+      flex-direction: column;
+      font-size: 12px;
+    }
+    .header-signature {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      max-width: 180px;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0;
+    }
+    .meta {
+      font-size: 12px;
+      margin: 2px 0 0 0;
+    }
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 4px 0 2px 0;
+    }
+    .subtle {
+      color: #666;
+      font-size: 11px;
+      margin: 0 0 2px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    thead th {
+      text-align: left;
+      border-bottom: 1px solid #aaa;
+      padding: 4px 3px;
+      background: #f2f2f2;
+    }
+    tbody td {
+      border-bottom: 1px solid #eee;
+      padding: 3px 2px;
+    }
+    .status-critical td { background: #ffeceb; }
+    .status-warning td { background: #fff6e0; }
+    .status-ok td { background: #f7fff7; }
+
+    .report-footer {
+      margin-top: 8px;
+      font-size: 10px;
+      color: #555;
+      text-align: right;
+    }
+
+    /* Ultima pagina: firma operatore in basso a destra */
+    .signature-page {
+      position: relative;
+      min-height: 200mm; /* Garantisce spazio sufficiente */
+    }
+    .signature-container {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      text-align: right;
+    }
+    .signature-image {
+      width: 140px;
+      height: auto;
+      object-fit: contain;
+      margin-bottom: 6px;
+    }
+    /* Requisito: p per firma operatore in basso a destra dell'ultima pagina */
+    .signature-text {
+      font-size: 12px;
+      font-style: italic;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Pagina contenuti -->
+  <div class="page">
+    <header class="report-header">
+      <div id="logo-top-left">
+        <img src="{{LOGO_PATH}}" alt="Logo aziendale" />
+      </div>
+      <div class="header-info">
+        <h1 class="title">Rapporto Cassette di Primo Soccorso</h1>
+        <p class="meta">Revisione: {{REVISIONE}}</p>
+        <p class="meta">Ubicazione: {{SEDE_UBICAZIONE}}</p>
+        <p class="meta">Data: {{DATA_ITALIANA}}</p>
+        <p class="meta">Nome completo: {{NOME_OPERATORE}}</p>
+        <p class="meta">Ruolo/Titolo: {{RUOLO_OPERATORE}}</p>
+      </div>
+      <div class="header-signature">
+        <img src="{{FIRMA_PNG_PATH}}" alt="Firma Operatore" class="signature-image" />
+        <p id="operator-signature-text" class="signature-text">{{NOME_OPERATORE}}</p>
+      </div>
+    </header>
+
+    {{#each SEZIONI_KIT}}
+      <section class="kit-section">
+        <div class="section-title">{{nome}} — Completezza: {{percentuale_completezza}}%</div>
+        <div class="subtle">Ubicazione kit: {{ubicazione}}</div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Codice</th>
+              <th>Articolo</th>
+              <th>Lotto/Seriale</th>
+              <th>Q. attuale</th>
+              <th>Q. target</th>
+              <th>Stato scadenza</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each articoli}}
+              <tr class="{{stato_scadenza_class}}">
+                <td>{{codice}}</td>
+                <td>{{nome}}</td>
+                <td>{{lotto_seriale}}</td>
+                <td>{{quantita_attuale}}</td>
+                <td>{{quantita_target}}</td>
+                <td>{{stato_scadenza}}</td>
+              </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </section>
+    {{/each}}
+
+    <div class="report-footer">Pagina {{PAGINA_CORRENTE}} di {{TOTALE_PAGINE}}</div>
+  </div>
+
+  <!-- Pagine aggiuntive rimosse: firma integrata nell'intestazione del primo foglio -->
+</body>
+</html>
