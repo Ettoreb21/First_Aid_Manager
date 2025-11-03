@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="theme.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Override API base per hosting statici (GitHub Pages) -->
+    <script src="api-base.js"></script>
 
 </head>
 <body>
@@ -448,7 +450,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIP9h5qVjT5l2Uu8B6e1fAq3pTzJQwYBzQ8S2oZ8QJc3kFZQYfEo6V4n3j6F0S2mQ7s8vJqfM7lJ9pYQx0nA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=kit-standard-7"></script>
+    <script src="app.js?v=kit-standard-9"></script>
     <script>
       (function(){
         function getRole(){
@@ -477,7 +479,11 @@
           '#logout-btn',
           '#user-logout-btn',
           '#current-user-display',
-          '#auth-controls'
+          '#auth-controls',
+          // Login modal controls
+          '#login-submit',
+          '#login-identifier',
+          '#login-password'
         ];
         // Contenitori che non devono essere bloccati (es. barra azioni principali)
         const alwaysEnabledContainers = [

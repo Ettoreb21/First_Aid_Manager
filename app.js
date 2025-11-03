@@ -41,14 +41,8 @@ class FirstAidManager {
         // Settings loaded from backend (SQL), kept nested following config/settings.json keys
         this.appSettings = {};
         // Backend Materials API config
-        // Se la UI gira su 5173 (server statico), evita di puntare alla stessa origine
-        // e usa direttamente l'API su porta 3002 (materials server) come default.
-        const uiPort = (location.port || '');
-        if (uiPort === '5173') {
-            this.apiBase = 'http://localhost:3002/api';
-        } else {
-            this.apiBase = `${location.origin}/api`;
-        }
+        // Se definito un override globale (es. su GitHub Pages) usa quello; altrimenti same-origin '/api'
+        this.apiBase = (typeof window !== 'undefined' && window.FAM_API_BASE) ? window.FAM_API_BASE : `${location.origin}/api`;
         this.apiKey = localStorage.getItem('fam_api_key') || 'dev-key';
         this.serverMaterials = [];
         // DB Materials UI state
@@ -60,6 +54,8 @@ class FirstAidManager {
         // Auth state
         this.currentUser = null;
         this.currentUserRole = 'ospite';
+        // Stato backend (raggiungibile e pronto)
+        this.backendReady = false;
         // Debounce timers per salvataggio stato bottoni lato server
         this.buttonAutoSaveTimers = new Map();
         this.init();
@@ -75,31 +71,36 @@ class FirstAidManager {
         this.createDefaultKits();
         this.renderAllSections();
 
-        // Risolvi base URL API con fallback (localhost:3002) se /api non è disponibile sulla stessa origine
-        await this.resolveApiBase();
+        // Risolvi e verifica disponibilità backend
+        await this.ensureApiReady();
 
-        // Carica impostazioni dal backend (fallback a defaults se DB non disponibile)
-        try {
-            await this.loadBackendSettings();
-        } catch (e) {
-            console.warn('Impossibile caricare le impostazioni dal backend:', e?.message || e);
+        // Carica impostazioni dal backend solo se pronto (altrimenti usa defaults)
+        if (this.backendReady) {
+            try {
+                await this.loadBackendSettings();
+            } catch (e) {
+                console.warn('Impossibile caricare le impostazioni dal backend:', e?.message || e);
+            }
         }
 
-        // Carica stati dei bottoni dal backend (SQL) e applica al DOM
-        try {
-            await this.loadButtonStatesFromServer();
-        } catch (e) {
-            console.warn('Impossibile caricare stati bottoni dal backend:', e?.message || e);
+        // Carica stati bottoni solo se backend pronto
+        if (this.backendReady) {
+            try {
+                await this.loadButtonStatesFromServer();
+            } catch (e) {
+                console.warn('Impossibile caricare stati bottoni dal backend:', e?.message || e);
+            }
         }
 
-        // Carica elenco materiali dal server per inserimenti via APP
-        try {
-            await this.loadServerMaterials();
-            // Se la sezione impostazioni è attiva, aggiorna la tab Anagrafica
-            const activeTab = document.querySelector('.settings-tab.active')?.getAttribute('data-tab');
-            if (activeTab === 'materials') this.createSettingsPanel('materials');
-        } catch (e) {
-            console.warn('Impossibile caricare i materiali dal server:', e.message);
+        // Carica elenco materiali dal server solo se backend pronto
+        if (this.backendReady) {
+            try {
+                await this.loadServerMaterials();
+                const activeTab = document.querySelector('.settings-tab.active')?.getAttribute('data-tab');
+                if (activeTab === 'materials') this.createSettingsPanel('materials');
+            } catch (e) {
+                console.warn('Impossibile caricare i materiali dal server:', e.message);
+            }
         }
 
         // Navigate to section from hash if present (e.g., #kits)
@@ -184,7 +185,10 @@ class FirstAidManager {
             // Also allow start date editing for completeness
             'schedule-start-date',
             // File input per upload logo
-            'settings-report-company-logo'
+            'settings-report-company-logo',
+            // Login modal fields must remain editable per ospite
+            'login-identifier',
+            'login-password'
         ];
         // Extend with dynamic allowed IDs if configured
         const dynamicAllowed = Array.isArray(this.allowedEditableIds) ? this.allowedEditableIds : [];
@@ -196,6 +200,17 @@ class FirstAidManager {
         }
         const elements = Array.from(scope.querySelectorAll('input, textarea'));
         elements.forEach(el => {
+            // Non applicare restrizioni agli elementi all'interno del modale
+            try {
+                const inModal = el.closest && el.closest('#modal');
+                if (inModal) {
+                    // assicurati che siano abilitati
+                    el.removeAttribute('readonly');
+                    el.removeAttribute('aria-readonly');
+                    el.classList.remove('readonly-block');
+                    return;
+                }
+            } catch (_) {}
             const id = el.id || '';
             const isAuthorized = allowList.includes(id);
             const tag = (el.tagName || '').toLowerCase();
@@ -380,10 +395,15 @@ class FirstAidManager {
     }
 
     async fetchCurrentUser() {
+        if (!this.backendReady) {
+            this.currentUser = null;
+            this.currentUserRole = 'ospite';
+            return;
+        }
         try {
-            const res = await fetch(`${this.apiBase}/auth/me`, { credentials: 'include' });
+            const res = await this.timeoutFetch(`${this.apiBase}/auth/me`, { credentials: 'include', headers: { 'Accept': 'application/json' } }, 1500);
             if (!res.ok) throw new Error(`me failed: ${res.status}`);
-            const data = await res.json();
+            const data = await this.parseJsonSafe(res);
             const user = (data && data.user) ? data.user : null;
             this.currentUser = user;
             this.currentUserRole = user?.role || 'ospite';
@@ -420,6 +440,14 @@ class FirstAidManager {
     }
 
     async submitLogin() {
+        if (!this.backendReady) {
+            const errElOffline = document.getElementById('login-error');
+            if (errElOffline) {
+                errElOffline.style.display = 'block';
+                errElOffline.textContent = 'Backend non raggiungibile al momento. Riprova tra qualche secondo.';
+            }
+            return;
+        }
         const identEl = document.getElementById('login-identifier');
         const passEl = document.getElementById('login-password');
         const errEl = document.getElementById('login-error');
@@ -430,17 +458,37 @@ class FirstAidManager {
             return;
         }
         try {
-            const res = await fetch(`${this.apiBase}/auth/login`, {
+            // Verifica che l'API sia pronta, altrimenti prova a risolvere base URL
+            await this.ensureApiReady();
+
+            // Diagnostica uso errato su hosting statico (es. GitHub Pages)
+            const isGithubPages = /\.github\.io$/i.test(location.hostname);
+            const usingSameOrigin = this.apiBase.startsWith(location.origin);
+            if (isGithubPages && usingSameOrigin) {
+                throw new Error('Configurazione API mancante: imposta window.FAM_API_BASE in api-base.js con l\'URL del backend pubblico.');
+            }
+
+            const res = await this.timeoutFetch(`${this.apiBase}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({ identifier, password })
-            });
+            }, 2500);
             if (!res.ok) {
-                const text = await res.text();
-                throw new Error(text || `Login fallito (${res.status})`);
+                const ct = (res.headers && res.headers.get && res.headers.get('content-type')) || '';
+                // Risposta HTML (tipico di 405 da hosting statico): mostra messaggio amichevole
+                if (/text\/html/i.test(ct)) {
+                    throw new Error(`Login non disponibile su questa origine (status ${res.status}). Verifica FAM_API_BASE e CORS backend.`);
+                }
+                // Prova a leggere JSON di errore, altrimenti usa status
+                let msg = `Login fallito (${res.status})`;
+                try {
+                    const j = await this.parseJsonSafe(res);
+                    if (j && (j.message || j.error)) msg = j.message || j.error;
+                } catch (_) {}
+                throw new Error(msg);
             }
-            const data = await res.json();
+            const data = await this.parseJsonSafe(res);
             const user = (data && data.user) ? data.user : null;
             this.currentUser = user;
             this.currentUserRole = user?.role || 'ospite';
@@ -458,7 +506,7 @@ class FirstAidManager {
 
     async logout() {
         try {
-            const res = await fetch(`${this.apiBase}/auth/logout`, { method: 'POST', credentials: 'include' });
+            const res = await this.timeoutFetch(`${this.apiBase}/auth/logout`, { method: 'POST', credentials: 'include' }, 1500);
             if (!res.ok) throw new Error(`Logout fallito (${res.status})`);
         } catch (_) {}
         this.currentUser = null;
@@ -4849,7 +4897,7 @@ class FirstAidManager {
         }
 
         try {
-            const resp = await fetch(`${this.apiBase}/send-email`, {
+            const resp = await this.timeoutFetch(`${this.apiBase}/send-email`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -4859,7 +4907,7 @@ class FirstAidManager {
                     html: htmlContent,
                     replyTo: this.getSenderEmail()
                 })
-            });
+            }, 4000);
             const data = await this.parseJsonSafe(resp);
             if (resp.ok && (data.success === true || Object.keys(data).length === 0)) {
                 alert('Email Scadenze inviata con successo!');
@@ -4932,7 +4980,7 @@ class FirstAidManager {
         }
 
         try {
-            const resp = await fetch(`${this.apiBase}/send-email`, {
+            const resp = await this.timeoutFetch(`${this.apiBase}/send-email`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -4942,7 +4990,7 @@ class FirstAidManager {
                     html: htmlContentZero,
                     replyTo: this.getSenderEmail()
                 })
-            });
+            }, 4000);
             const data = await this.parseJsonSafe(resp);
             if (resp.ok && (data.success === true || Object.keys(data).length === 0)) {
                 alert('Email Quantità Zero inviata con successo!');
@@ -5013,7 +5061,7 @@ class FirstAidManager {
         if (critBodyEl) critBodyEl.value = htmlContent;
 
         try {
-            const resp = await fetch(`${this.apiBase}/send-email`, {
+            const resp = await this.timeoutFetch(`${this.apiBase}/send-email`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -5023,7 +5071,7 @@ class FirstAidManager {
                     html: htmlContent,
                     replyTo: this.getSenderEmail()
                 })
-            });
+            }, 4000);
             const data = await this.parseJsonSafe(resp);
             if (resp.ok && (data.success === true || Object.keys(data).length === 0)) {
                 alert('Notifica Materiali Critici inviata con successo!');
@@ -5360,18 +5408,25 @@ class FirstAidManager {
     // Effettua fetch con "soft timeout" senza AbortController per evitare net::ERR_ABORTED
     async timeoutFetch(url, options = {}, timeoutMs = 2000) {
         // Cattura gli errori di network per evitare unhandled rejections
+        const startTs = Date.now();
         const fetchPromise = fetch(url, options).catch(err => ({ __error: err }));
         const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({ __timeout: true }), timeoutMs));
         const result = await Promise.race([fetchPromise, timeoutPromise]);
 
         // Se vince il timeout, restituisci una Response sintetica 408 con payload minimo
         if (result && result.__timeout) {
+            const took = Date.now() - startTs;
+            console.warn(`[net] Timeout after ${took}ms for`, url);
             const body = JSON.stringify({ status: 'timeout' });
             return new Response(body, { status: 408, headers: { 'Content-Type': 'application/json' } });
         }
 
         // Se la fetch ha generato un errore (es. connection refused), restituisci 503 sintetico
         if (result && result.__error) {
+            const took = Date.now() - startTs;
+            const name = result.__error?.name || 'NetworkError';
+            const msg = result.__error?.message || String(result.__error);
+            console.warn(`[net] Failure after ${took}ms for ${url}: ${name} ${msg}`);
             const body = JSON.stringify({ status: 'unreachable' });
             return new Response(body, { status: 503, headers: { 'Content-Type': 'application/json' } });
         }
@@ -5383,71 +5438,55 @@ class FirstAidManager {
     async resolveApiBase() {
         const uiPort = (location.port || '');
         const onStaticPreview = uiPort === '5500' || uiPort === '5173' || uiPort === '5176';
-        const candidates = onStaticPreview ? [
-            // UI su 5173/5176: evita stessa origine; prova backends noti e stabili
-            'http://localhost:3000/api',
-            'http://127.0.0.1:3000/api',
-            'http://localhost:3003/api',
-            'http://127.0.0.1:3003/api',
-            'http://localhost:3005/api',
-            'http://127.0.0.1:3005/api'
-        ] : [
-            // In altri casi prova prima stessa origine, poi fallback
-            `${location.origin}/api`,
-            'http://localhost:3000/api',
-            'http://127.0.0.1:3000/api',
-            'http://localhost:3002/api',
-            'http://127.0.0.1:3002/api',
-            'http://localhost:3005/api',
-            'http://127.0.0.1:3005/api'
-        ];
+        // Se esiste override lato client, provalo per primo, poi same-origin '/api'
+        const override = (typeof window !== 'undefined' && window.FAM_API_BASE) ? window.FAM_API_BASE : null;
+        // Evita il fallback same-origin su hosting statici (GitHub Pages)
+        const candidates = (() => {
+            const isGithubPages = /\.github\.io$/i.test(location.hostname);
+            if (isGithubPages) {
+                return [
+                    ...(override ? [override] : [])
+                ];
+            }
+            return [
+                ...(override ? [override] : []),
+                `${location.origin}/api`
+            ];
+        })();
         const tested = [];
         for (const base of candidates) {
             try {
                 const testUrl = `${base}/health`;
-                // Usa solo header minimi per evitare preflight CORS non necessari
-                const resp = await this.timeoutFetch(testUrl, { headers: { 'Accept': 'application/json' }, method: 'GET' }, 2000);
-                tested.push({ base, status: resp?.status });
-                if (resp && resp.ok) {
-                    let data = {};
-                    try {
-                        data = await this.parseJsonSafe(resp);
-                    } catch (_) { data = {}; }
-                    const isValid = data && typeof data === 'object' && data.status === 'ok';
-                    if (isValid) {
-                        this.apiBase = base;
-                        console.info('API base selezionata:', base);
-                        return;
-                    } else {
-                        const sample = data && data.raw ? String(data.raw).slice(0, 80) : JSON.stringify(data);
-                        console.warn('Health check non valido per', base, 'risposta:', sample);
-                    }
+                // HEAD per ridurre problemi CORS/body durante il warm-up del backend
+                const respHead = await this.timeoutFetch(testUrl, { method: 'HEAD', cache: 'no-store' }, 5000);
+                tested.push({ base, status: respHead?.status });
+                if (respHead && respHead.ok) {
+                    this.apiBase = base;
+                    this.backendReady = true;
+                    console.info('API base selezionata (HEAD ok):', base);
+                    return;
                 }
             } catch (_) {
                 // continua con il prossimo candidato
             }
         }
         // Nessun candidato raggiungibile: mantieni default e logga
-        if (onStaticPreview) {
-            console.warn('Nessuna API raggiungibile (preview UI su', uiPort, '). Modalità offline per materiali. Testati:', tested.map(t => `${t.base} [${t.status}]`).join(', '));
-        } else {
-            console.warn('Nessuna API raggiungibile. Modalità offline per materiali. Testati:', tested.map(t => `${t.base} [${t.status}]`).join(', '));
-        }
+        this.backendReady = false;
+        console.warn('Nessuna API raggiungibile. Modalità offline per materiali. Testati:', tested.map(t => `${t.base} [${t.status}]`).join(', '));
     }
 
     // Verifica che l'API corrente risponda, altrimenti la risolve
     async ensureApiReady() {
-        try {
-            const testUrl = `${this.apiBase}/health`;
-            // Headers minimi per health
-            const resp = await this.timeoutFetch(testUrl, { headers: { 'Accept': 'application/json' }, method: 'GET' }, 1500);
-            if (resp && resp.ok) {
-                let data = {};
-                try { data = await this.parseJsonSafe(resp); } catch (_) { data = {}; }
-                if (data && data.status === 'ok') return;
-                console.warn('Health corrente non valido su', this.apiBase, 'risposta:', data && data.raw ? String(data.raw).slice(0,80) : JSON.stringify(data));
-            }
-        } catch (_) {}
+        const attempts = 3;
+        const base = this.apiBase;
+        for (let i = 0; i < attempts; i++) {
+            try {
+                const testUrl = `${base}/health`;
+                const respHead = await this.timeoutFetch(testUrl, { method: 'HEAD', cache: 'no-store' }, 5000);
+                if (respHead && respHead.ok) { this.backendReady = true; return; }
+            } catch (_) {}
+            await new Promise(r => setTimeout(r, 750 * (i + 1)));
+        }
         await this.resolveApiBase();
     }
 
