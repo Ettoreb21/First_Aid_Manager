@@ -1,0 +1,770 @@
+openapi: 3.0.3
+info:
+  title: First Aid Manager API
+  version: 1.2.0
+  description: |
+    API per gestione materiali, autenticazione, impostazioni, reportistica, email e integrazioni.
+    Include sicurezza con sessioni, API key e (opzionale) OAuth2, oltre a metriche e webhooks.
+servers:
+  - url: http://127.0.0.1:3002
+    description: Sviluppo locale
+  - url: https://your-api.example.com
+    description: Produzione
+tags:
+  - name: Health
+  - name: Auth
+  - name: Users
+  - name: Materials
+  - name: Settings
+  - name: Buttons
+  - name: Reports
+  - name: Orders
+  - name: Email
+  - name: Webhooks
+  - name: Monitoring
+security:
+  - cookieAuth: []
+  - apiKeyAuth: []
+  - oauth2: []
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              examples:
+                ok:
+                  value: { status: 'ok', port: 3002, timestamp: '2025-01-01T12:00:00.000Z' }
+    head:
+      tags: [Health]
+      summary: Lightweight health check
+      responses:
+        '200':
+          description: OK
+
+  /metrics:
+    get:
+      tags: [Monitoring]
+      summary: Prometheus metrics
+      responses:
+        '200':
+          description: Metrics
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Registra un nuovo utente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegisterRequest'
+            examples:
+              sample:
+                value:
+                  firstName: Mario
+                  lastName: Rossi
+                  username: mrossi
+                  email: mario.rossi@example.com
+                  role: amministratore
+                  password: Abcdefg1
+                  confirmPassword: Abcdefg1
+      responses:
+        '200':
+          description: Utente registrato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRegisterResponse'
+        '400':
+          description: Errore validazione
+        '409':
+          description: Username/email già in uso
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Autenticazione utente (sessione)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLoginRequest'
+            examples:
+              sample:
+                value:
+                  identifier: mrossi
+                  password: Abcdefg1
+      responses:
+        '200':
+          description: Login riuscito
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Cookie di sessione
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserLoginResponse'
+        '401':
+          description: Credenziali non valide
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout utente (termina sessione)
+      responses:
+        '200':
+          description: Logout OK
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Informazioni utente corrente
+      responses:
+        '200':
+          description: Utente loggato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserMeResponse'
+        '401':
+          description: Non autenticato
+
+  /api/auth/users:
+    get:
+      tags: [Users]
+      summary: Lista utenti (paginata)
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: pageSize
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+        - in: query
+          name: sortBy
+          schema: { type: string, enum: ['id','firstName','lastName','email','role','createdAt'], default: createdAt }
+        - in: query
+          name: sortDir
+          schema: { type: string, enum: ['asc','desc'], default: desc }
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [Users]
+      summary: Aggiorna utente
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: OK
+    delete:
+      tags: [Users]
+      summary: Elimina utente
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: OK
+
+  /api/materiali:
+    get:
+      tags: [Materials]
+      summary: Ricerca e lista materiali
+      parameters:
+        - in: query
+          name: query
+          schema: { type: string }
+        - in: query
+          name: categoria
+          schema: { type: string }
+        - in: query
+          name: fornitore
+          schema: { type: string }
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Lista materiali
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Material' }
+    post:
+      tags: [Materials]
+      summary: Crea materiale
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaterialCreate' }
+      responses:
+        '201':
+          description: Creato
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Material' }
+
+  /api/materiali/scadenze:
+    get:
+      tags: [Materials]
+      summary: Filtra per scadenze
+      parameters:
+        - in: query
+          name: days
+          schema: { type: integer }
+        - in: query
+          name: expired
+          schema: { type: string, enum: ['true','false'] }
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: OK
+
+  /api/materiali/{id}:
+    put:
+      tags: [Materials]
+      summary: Aggiorna materiale
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaterialUpdate' }
+      responses:
+        '200':
+          description: OK
+    delete:
+      tags: [Materials]
+      summary: Elimina materiale
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: OK
+
+  /api/export/excel:
+    get:
+      tags: [Materials]
+      summary: Esporta materiali in Excel
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: OK
+
+  /api/settings:
+    get:
+      tags: [Settings]
+      summary: Ottiene tutte le impostazioni
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200': { description: OK }
+    post:
+      tags: [Settings]
+      summary: Imposta una chiave
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettingsItem' }
+      responses:
+        '200': { description: OK }
+  /api/settings/bulk:
+    patch:
+      tags: [Settings]
+      summary: Aggiornamento bulk
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/SettingsItem' }
+      responses:
+        '200': { description: OK }
+  /api/settings/export:
+    get:
+      tags: [Settings]
+      summary: Esporta impostazioni in JSON
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200': { description: OK }
+  /api/settings/export-xlsx:
+    get:
+      tags: [Settings]
+      summary: Esporta impostazioni in XLSX
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200': { description: OK }
+  /api/settings/import:
+    post:
+      tags: [Settings]
+      summary: Importa impostazioni da JSON
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200': { description: OK }
+  /api/settings/{key}:
+    get:
+      tags: [Settings]
+      summary: Ottiene una singola impostazione
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema: { type: string }
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200': { description: OK }
+  /api/settings/clear:
+    post:
+      tags: [Settings]
+      summary: Cancella tutte le impostazioni
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200': { description: OK }
+
+  /api/buttons:
+    get:
+      tags: [Buttons]
+      summary: Lista stati bottoni
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200': { description: OK }
+  /api/buttons/{id}:
+    get:
+      tags: [Buttons]
+      summary: Stato singolo bottone
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200': { description: OK }
+    post:
+      tags: [Buttons]
+      summary: Imposta stato bottone
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ButtonState' }
+      responses:
+        '200': { description: OK }
+
+  /report/generate:
+    post:
+      tags: [Reports]
+      summary: Genera report cassette
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportGenerateRequest' }
+      responses:
+        '200':
+          description: Report generato
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportGenerateResponse' }
+    get:
+      tags: [Reports]
+      summary: Informazioni sull'endpoint legacy
+      responses:
+        '200': { description: OK }
+
+  /report/download:
+    get:
+      tags: [Reports]
+      summary: Scarica il PDF generato
+      parameters:
+        - in: query
+          name: file
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+
+  /report/generate/error500:
+    post:
+      tags: [Reports]
+      summary: Genera report diagnostico errore 500
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Error500Request' }
+      responses:
+        '200': { description: OK }
+
+  /orders/generate-pdf:
+    post:
+      tags: [Orders]
+      summary: Genera PDF richiesta d'ordine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderPDFResponse' }
+
+  /orders/verify-signature/{signatureId}:
+    get:
+      tags: [Orders]
+      summary: Verifica firma digitale del PDF
+      parameters:
+        - in: path
+          name: signatureId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+
+  /api/upload/logo:
+    post:
+      tags: [Reports]
+      summary: Carica il logo aziendale
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filename: { type: string }
+                data: { type: string, description: Base64 o data URL }
+      responses:
+        '200': { description: OK }
+
+  /api/pdf-settings:
+    get:
+      tags: [Reports]
+      summary: Ottiene impostazioni PDF
+      responses:
+        '200': { description: OK }
+    post:
+      tags: [Reports]
+      summary: Aggiorna impostazioni PDF
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                section: { type: string }
+                key: { type: string }
+                value: {}
+      responses:
+        '200': { description: OK }
+
+  /api/email-status:
+    get:
+      tags: [Email]
+      summary: Stato configurazione email
+      responses:
+        '200': { description: OK }
+
+  /api/send-email:
+    post:
+      tags: [Email]
+      summary: Invia email
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendEmailRequest' }
+      responses:
+        '200': { description: OK }
+
+  /api/flush-outbox:
+    post:
+      tags: [Email]
+      summary: Forza elaborazione outbox email
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200': { description: OK }
+
+  /webhooks/resend:
+    post:
+      tags: [Webhooks]
+      summary: Webhook Resend per tracking email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+      description: Session cookie per autenticazione utente
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: API Key legacy per backend
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/oauth2/authorize
+          tokenUrl: https://auth.example.com/oauth2/token
+          scopes:
+            materials:read: Lettura materiali
+            materials:write: Scrittura materiali
+            settings:admin: Gestione impostazioni
+            reports:generate: Generazione report
+            email:send: Invio email
+            users:manage: Gestione utenti
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status: { type: string }
+        port: { type: integer }
+        timestamp: { type: string, format: date-time }
+    UserRegisterRequest:
+      type: object
+      required: [firstName,lastName,username,email,role,password,confirmPassword]
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 100 }
+        lastName: { type: string, minLength: 1, maxLength: 100 }
+        username: { type: string, minLength: 3, maxLength: 100 }
+        email: { type: string, format: email }
+        role: { type: string, enum: [master, amministratore, ospite] }
+        password: { type: string, minLength: 8 }
+        confirmPassword: { type: string }
+    UserRegisterResponse:
+      type: object
+      properties:
+        status: { type: string }
+        user:
+          $ref: '#/components/schemas/User'
+    UserLoginRequest:
+      type: object
+      required: [identifier,password]
+      properties:
+        identifier: { type: string }
+        password: { type: string }
+    UserLoginResponse:
+      type: object
+      properties:
+        status: { type: string }
+        user:
+          $ref: '#/components/schemas/User'
+    UserMeResponse:
+      type: object
+      properties:
+        status: { type: string }
+        user:
+          $ref: '#/components/schemas/User'
+    UserUpdateRequest:
+      type: object
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 100 }
+        lastName: { type: string, minLength: 1, maxLength: 100 }
+        email: { type: string, format: email }
+        role: { type: string, enum: [master, amministratore, ospite] }
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        email: { type: string, format: email }
+        role: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        createdAt: { type: string, format: date-time }
+    Material:
+      type: object
+      properties:
+        id: { type: integer }
+        nome_materiale: { type: string }
+        categoria: { type: string }
+        quantita: { type: integer }
+        unita_misura: { type: string }
+        data_acquisizione: { type: string, format: date }
+        data_scadenza: { type: string, format: date }
+        fornitore: { type: string }
+        note: { type: string }
+        stato_scadenza: { type: string }
+    MaterialCreate:
+      allOf:
+        - $ref: '#/components/schemas/Material'
+        - type: object
+          required: [nome_materiale]
+    MaterialUpdate:
+      allOf:
+        - $ref: '#/components/schemas/Material'
+    SettingsItem:
+      type: object
+      properties:
+        key: { type: string }
+        value: {}
+        type: { type: string }
+    ButtonState:
+      type: object
+      properties:
+        id: { type: string }
+        button: { type: string }
+        updatedAt: { type: string, format: date-time }
+    ReportGenerateRequest:
+      type: object
+      properties:
+        operatore: { type: string }
+        operatorSignature: { type: string, description: Base64 data URL }
+        kits: { type: array, items: { type: object } }
+        location: { type: string }
+        dateLongFormat: { type: string }
+        thresholdDays: { type: integer }
+        revision: { type: string }
+        logoPath: { type: string }
+    ReportGenerateResponse:
+      type: object
+      properties:
+        status: { type: string }
+        fileName: { type: string }
+        filePath: { type: string }
+        downloadUrl: { type: string }
+        traceId: { type: string }
+    Error500Request:
+      type: object
+      properties:
+        context: { type: object }
+        errorMessage: { type: string }
+        stack: { type: string }
+    OrderRequest:
+      type: object
+      required: [city,date,operatorName,operatorId,items]
+      properties:
+        city: { type: string }
+        date: { type: string, pattern: '^\\d{2}/\\d{2}/\\d{4}$' }
+        operatorName: { type: string }
+        operatorId: { oneOf: [ { type: string }, { type: integer } ] }
+        companyName: { type: string }
+        companyAddress: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              name: { type: string }
+              location: { type: string }
+              reorderQty: { type: integer, minimum: 0 }
+              expiryDate: { type: string }
+              type: { type: string, enum: ['scadenza','quantita_zero','entrambi'] }
+    OrderPDFResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        outputPath: { type: string }
+        outputUrl: { type: string }
+        previewUrl: { type: string }
+        traceId: { type: string }
+        signatureId: { type: string }
+        signedAt: { type: string }
+    SendEmailRequest:
+      type: object
+      required: [to,subject]
+      properties:
+        to: { type: string }
+        subject: { type: string }
+        html: { type: string }
+        text: { type: string }
+        cc: { type: string }
+        bcc: { type: string }
+        replyTo: { type: string }
+  parameters:
+    XRequestId:
+      in: header
+      name: X-Request-Id
+      schema: { type: string }
+      description: Correlation ID opzionale. Se assente viene generato dal server.

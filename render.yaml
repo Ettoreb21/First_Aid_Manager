@@ -3,10 +3,13 @@ services:
     name: first-aid-manager
     env: node
     plan: free
-    buildCommand: "npm install"
+    buildCommand: "npm ci"
     startCommand: "node server.js"
     autoDeploy: true
+    healthCheckPath: "/api/health"
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: NODE_VERSION
         value: 18
       - key: EMAIL_PROVIDER
@@ -17,10 +20,22 @@ services:
         value: Assistenza Tecnica ISOKIT
       - key: LOG_LEVEL
         value: info
+      - key: CORS_ORIGINS
+        value: https://ettoreb21.github.io
+      - key: COOKIE_SECURE
+        value: true
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: DB_DIALECT
+        value: sqlite
+      - key: DB_SQLITE_PATH
+        value: /opt/render/project/src/data/materials.sqlite
       # Set as secrets in Render dashboard
       - key: BREVO_API_KEY
         sync: false
       - key: API_KEY
+        sync: false
+      - key: SESSION_SECRET
         sync: false
     disk:
       name: app-data

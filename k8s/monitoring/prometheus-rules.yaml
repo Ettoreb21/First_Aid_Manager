@@ -1,0 +1,61 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: fam-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: fam-error-latency
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            (sum(rate(http_request_duration_seconds_count{status_code=~"5.."}[5m])))
+            /
+            (sum(rate(http_request_duration_seconds_count[5m])))
+            > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "Error rate > 5%"
+            description: "Elevato tasso di errori 5xx (>5% media 5m)"
+        - alert: CriticalErrorRate
+          expr: |
+            (sum(rate(http_request_duration_seconds_count{status_code=~"5.."}[5m])))/(sum(rate(http_request_duration_seconds_count[5m]))) > 0.10
+          for: 10m
+          labels:
+            severity: critical
+            team: backend
+          annotations:
+            summary: "Error rate > 10%"
+            description: "Errore 5xx sopra 10% per 10m"
+        - alert: HighLatencyP95
+          expr: |
+            histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route)) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "p95 latency > 500ms"
+            description: "Latenza p95 sopra 500ms per rotte: {{ $labels.route }}"
+        - alert: HighLatencyP99
+          expr: |
+            histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route)) > 1
+          for: 10m
+          labels:
+            severity: critical
+            team: backend
+          annotations:
+            summary: "p99 latency > 1s"
+            description: "Latenza p99 sopra 1s per rotte: {{ $labels.route }}"
+        - alert: FiveXXBurst
+          expr: sum(rate(http_request_duration_seconds_count{status_code=~"5.."}[1m])) > 5
+          for: 5m
+          labels:
+            severity: warning
+            team: backend
+          annotations:
+            summary: "Burst di 5xx >5/min"
+            description: "Spike di errori 5xx rilevato"

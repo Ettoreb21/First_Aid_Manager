@@ -8,26 +8,49 @@ const path = require('path');
 const cors = require('cors');
 const fs = require('fs');
 const session = require('express-session');
+const helmet = require('helmet');
 const Joi = require('joi');
 const { spawn } = require('child_process');
 require('dotenv').config();
 // Avvio pianificazioni AssistBot
 require('./schedulers/emailScheduler');
+// Backup automatici
+try { require('./schedulers/backupScheduler'); } catch (_) {}
 // Modulo archivio materiali (DB + API)
 const apiAuth = require('./middleware/apiAuth');
 const materialsRouter = require('./routes/materials');
 const authRouter = require('./routes/auth');
 const { initSequelize } = require('./db/sequelize');
 const { start: startMaterialsScheduler } = require('./schedulers/materialsExpiryScheduler');
+const pinoHttp = require('pino-http')({
+  level: process.env.LOG_LEVEL || 'info',
+  customLogLevel: function (res, err) {
+    if (res.statusCode >= 500 || err) return 'error';
+    if (res.statusCode >= 400) return 'warn';
+    return 'info';
+  },
+  autoLogging: (process.env.REQUEST_LOGGING || 'true').toLowerCase() !== 'false',
+  customProps: (req, res) => ({ requestId: req.headers['x-request-id'] || req.id || undefined })
+});
+const client = require('prom-client');
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yamljs');
 
 // Process-level error handlers to improve diagnostics and avoid silent crashes
+const { notifyCritical } = require('./services/notifyService');
 process.on('uncaughtException', (err) => {
   const traceId = `proc_${Date.now()}`;
   console.error(`[${new Date().toISOString()}] [${traceId}] UNCAUGHT_EXCEPTION:`, err);
+  try {
+    notifyCritical('Uncaught exception', { traceId, error: err && err.message ? err.message : String(err) });
+  } catch {}
 });
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   const traceId = `proc_${Date.now()}`;
   console.error(`[${new Date().toISOString()}] [${traceId}] UNHANDLED_REJECTION:`, { reason });
+  try {
+    notifyCritical('Unhandled rejection', { traceId, reason: (reason && reason.message) || String(reason) });
+  } catch {}
 });
 
 // Importa moduli email e PDF
@@ -41,6 +64,33 @@ const PDFReportGenerator = require('./pdf-generator');
 
 
 const app = express();
+// Necessario quando si è dietro proxy/edge (Render/Heroku) per gestire correttamente 'secure' sui cookie
+app.set('trust proxy', 1);
+
+// Sicurezza HTTP
+app.use(helmet({ crossOriginResourcePolicy: false }));
+
+// Logging HTTP strutturato
+app.use(pinoHttp);
+
+// Correlation ID per tracing distribuito
+try { app.use(require('./middleware/correlationId')); } catch {}
+
+// Prometheus metrics
+const registry = new client.Registry();
+client.collectDefaultMetrics({ register: registry });
+const httpRequestDurationSeconds = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'HTTP request duration in seconds',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
+});
+registry.registerMetric(httpRequestDurationSeconds);
+app.use((req, res, next) => {
+  const end = httpRequestDurationSeconds.startTimer({ method: req.method, route: req.path });
+  res.on('finish', () => end({ status_code: res.statusCode }));
+  next();
+});
 
 // Explicit preflight handler to guarantee custom headers are allowed
 app.options('*', (req, res) => {
@@ -48,7 +98,7 @@ app.options('*', (req, res) => {
   if (origin) res.header('Access-Control-Allow-Origin', origin);
   res.header('Vary', 'Origin');
   res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type,Accept,Authorization,X-Requested-With,x-api-key,x-user');
   res.sendStatus(200);
 });
@@ -116,25 +166,28 @@ function logInfo(message, context = {}) {
     console.log(`[${timestamp}] INFO: ${message}`, context);
 }
 
-// Configurazione CORS specifica per sviluppo
+// Configurazione CORS con whitelist dinamica (supporta GitHub Pages in produzione)
+const DEV_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:3002',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3002',
+  'http://127.0.0.1:5173',
+  'http://localhost:5500',
+  'http://127.0.0.1:5500'
+];
+const PROD_ORIGINS = (process.env.CORS_ORIGINS || 'https://ettoreb21.github.io,https://yourdomain.com')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production' ? 
-        ['https://yourdomain.com'] : 
-        [
-            'http://localhost:3000',
-            'http://localhost:3002',
-            'http://localhost:5173',
-            'http://127.0.0.1:3000',
-            'http://127.0.0.1:3002',
-            'http://127.0.0.1:5173',
-            'http://localhost:5500',
-            'http://127.0.0.1:5500'
-        ],
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'X-Requested-With', 'x-api-key', 'x-user'],
-    credentials: true,
-    optionsSuccessStatus: 200, // Per compatibilità con browser legacy
-    preflightContinue: true
+  origin: process.env.NODE_ENV === 'production' ? PROD_ORIGINS : DEV_ORIGINS,
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'X-Requested-With', 'x-api-key', 'x-user'],
+  credentials: true,
+  optionsSuccessStatus: 200,
+  preflightContinue: true
 }));
 
 // Preflight CORS hardening: ensure custom headers are explicitly allowed
@@ -143,7 +196,7 @@ app.use((req, res, next) => {
   if (origin) res.header('Access-Control-Allow-Origin', origin);
   res.header('Vary', 'Origin');
   res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type,Accept,Authorization,X-Requested-With,x-api-key,x-user');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
@@ -172,23 +225,46 @@ app.use((req, res, next) => {
 });
 app.use(express.static('.'));
 
-// Sessioni per autenticazione utenti
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'dev-secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: false,
-    maxAge: 1000 * 60 * 60 * 8,
-  },
-}));
+// Sessioni: lo store viene configurato dopo l'inizializzazione di Sequelize per supportare scalabilità orizzontale
+const COOKIE_SECURE = String(process.env.COOKIE_SECURE || '').toLowerCase() === 'true';
+const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || (process.env.NODE_ENV === 'production' ? 'none' : 'lax');
 
 // Inizializza Sequelize e modelli materiali
 initSequelize()
-  .then(() => {
+  .then(({ sequelize }) => {
     console.log('[Materials] Sequelize inizializzato e modelli sincronizzati');
+    // Configura store sessioni su Sequelize per ambienti scalati
+    try {
+      const SequelizeStore = require('connect-session-sequelize')(session.Store);
+      const store = new SequelizeStore({ db: sequelize });
+      app.use(session({
+        secret: process.env.SESSION_SECRET || 'dev-secret',
+        resave: false,
+        saveUninitialized: false,
+        store,
+        cookie: {
+          httpOnly: true,
+          sameSite: COOKIE_SAMESITE,
+          secure: COOKIE_SECURE,
+          maxAge: 1000 * 60 * 60 * 8,
+        },
+      }));
+      store.sync();
+    } catch (e) {
+      console.warn('[Session] Store Sequelize non configurato:', e && e.message ? e.message : e);
+      app.use(session({
+        secret: process.env.SESSION_SECRET || 'dev-secret',
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+          httpOnly: true,
+          sameSite: COOKIE_SAMESITE,
+          secure: COOKIE_SECURE,
+          maxAge: 1000 * 60 * 60 * 8,
+        },
+      }));
+    }
+
     try {
       startMaterialsScheduler();
     } catch (e) {
@@ -208,6 +284,15 @@ app.use('/api', authRouter);
 app.use('/api', apiAuth, materialsRouter);
 app.use('/api', apiAuth, settingsRouter);
 app.use('/api/buttons', apiAuth, buttonsRouter);
+
+// Swagger UI per API docs
+try {
+  const openapiDocument = YAML.load(path.join(__dirname, 'docs', 'openapi.yaml'));
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: true }));
+  console.log('📘 API Docs disponibili su /api/docs');
+} catch (e) {
+  console.warn('Swagger UI non inizializzato:', e && e.message ? e.message : e);
+}
 
 // Middleware per gestione errori JSON parsing
 app.use((error, req, res, next) => {
@@ -300,7 +385,7 @@ app.post('/webhooks/resend', express.json({ type: '*/*' }), async (req, res) => 
     const event = req.body || {};
     const type = event.type || event.event || 'unknown';
     const payload = event.payload || event.data || event;
-    const logsDir = path.join(__dirname, 'logs');
+    const logsDir = process.env.LOG_DIR ? path.resolve(process.env.LOG_DIR) : path.join(process.cwd(), 'logs');
     try { if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true }); } catch {}
     const deliveryLog = path.join(logsDir, 'email_deliveries.log');
     const errorLog = path.join(logsDir, 'email_errors.log');
@@ -1261,6 +1346,21 @@ app.get('/api/health', (req, res) => {
     res.status(200).json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() });
 });
 
+// Lightweight HEAD health check to avoid CORS/body parsing issues
+app.head('/api/health', (req, res) => {
+    res.status(200).end();
+});
+
+// Metrics endpoint (Prometheus)
+app.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', registry.contentType);
+    res.send(await registry.metrics());
+  } catch (e) {
+    res.status(500).send('metrics_error');
+  }
+});
+
 // Gestione errori globali con JSON strutturato
 app.use((error, req, res, next) => {
     const traceId = generateTraceId();
@@ -1283,7 +1383,7 @@ app.use((error, req, res, next) => {
 
 // Avvio server
 const server = app.listen(PORT, () => {
-    console.log(`🚀 Server First Aid Manager avviato su http://localhost:${PORT}`);
+    console.log(`🚀 Server First Aid Manager avviato su http://127.0.0.1:${PORT}`);
     console.log(`📧 Endpoint email: http://localhost:${PORT}/api/send-email`);
     console.log(`📄 Endpoint PDF: http://localhost:${PORT}/generate-pdf`);
     

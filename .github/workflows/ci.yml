@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Trivy FS scan (SAST)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: fs
+          ignore-unfixed: true
+          format: table
+          exit-code: '0'
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: config
+          format: table
+          exit-code: '0'
+
+  docker-build-push:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, security-scan]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.REGISTRY }}/first-aid-manager:latest
+            ${{ secrets.REGISTRY }}/first-aid-manager:${{ github.sha }}
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: docker-build-push
+    environment: staging
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.29.0'
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${KUBE_CONFIG_STAGING}" > ~/.kube/config
+        env:
+          KUBE_CONFIG_STAGING: ${{ secrets.KUBE_CONFIG_STAGING }}
+      - name: Update image in deployment
+        run: |
+          kubectl set image deployment/fam-backend fam-backend=${{ secrets.REGISTRY }}/first-aid-manager:${{ github.sha }} -n default
+      - name: Apply manifests
+        run: |
+          kubectl apply -f k8s/ --recursive
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/fam-backend -n default --timeout=120s
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          kubectl rollout undo deployment/fam-backend -n default
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: docker-build-push
+    environment: production
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.29.0'
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${KUBE_CONFIG_PROD}" > ~/.kube/config
+        env:
+          KUBE_CONFIG_PROD: ${{ secrets.KUBE_CONFIG_PROD }}
+      - name: Update image in deployment
+        run: |
+          kubectl set image deployment/fam-backend fam-backend=${{ secrets.REGISTRY }}/first-aid-manager:${{ github.sha }} -n default
+      - name: Apply manifests
+        run: |
+          kubectl apply -f k8s/ --recursive
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/fam-backend -n default --timeout=180s
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          kubectl rollout undo deployment/fam-backend -n default

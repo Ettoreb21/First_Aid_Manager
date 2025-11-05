@@ -73,6 +73,24 @@ class FirstAidManager {
 
         // Risolvi e verifica disponibilità backend
         await this.ensureApiReady();
+        // Aggiorna UI stato backend e bind pulsante riprova
+        try {
+            this.updateBackendStatusUI();
+            const retryBtn = document.getElementById('retry-backend');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', async () => {
+                    retryBtn.disabled = true;
+                    retryBtn.textContent = 'In corso...';
+                    try {
+                        await this.ensureApiReady();
+                    } finally {
+                        this.updateBackendStatusUI();
+                        retryBtn.disabled = false;
+                        retryBtn.textContent = 'Riprova';
+                    }
+                });
+            }
+        } catch (_) {}
 
         // Carica impostazioni dal backend solo se pronto (altrimenti usa defaults)
         if (this.backendReady) {
@@ -5458,12 +5476,21 @@ class FirstAidManager {
             try {
                 const testUrl = `${base}/health`;
                 // HEAD per ridurre problemi CORS/body durante il warm-up del backend
-                const respHead = await this.timeoutFetch(testUrl, { method: 'HEAD', cache: 'no-store' }, 5000);
+                const respHead = await this.timeoutFetch(testUrl, { method: 'HEAD', cache: 'no-store' }, 6000);
                 tested.push({ base, status: respHead?.status });
                 if (respHead && respHead.ok) {
                     this.apiBase = base;
                     this.backendReady = true;
                     console.info('API base selezionata (HEAD ok):', base);
+                    return;
+                }
+                // Fallback GET con timeout più alto (Render può essere lento al wake-up)
+                const respGet = await this.timeoutFetch(testUrl, { method: 'GET', cache: 'no-store' }, 9000);
+                tested.push({ base, status: respGet?.status });
+                if (respGet && respGet.ok) {
+                    this.apiBase = base;
+                    this.backendReady = true;
+                    console.info('API base selezionata (GET ok):', base);
                     return;
                 }
             } catch (_) {
@@ -5473,21 +5500,34 @@ class FirstAidManager {
         // Nessun candidato raggiungibile: mantieni default e logga
         this.backendReady = false;
         console.warn('Nessuna API raggiungibile. Modalità offline per materiali. Testati:', tested.map(t => `${t.base} [${t.status}]`).join(', '));
+        try { this.updateBackendStatusUI(); } catch (_) {}
     }
 
     // Verifica che l'API corrente risponda, altrimenti la risolve
     async ensureApiReady() {
-        const attempts = 3;
+        const attempts = 6;
         const base = this.apiBase;
         for (let i = 0; i < attempts; i++) {
             try {
                 const testUrl = `${base}/health`;
-                const respHead = await this.timeoutFetch(testUrl, { method: 'HEAD', cache: 'no-store' }, 5000);
-                if (respHead && respHead.ok) { this.backendReady = true; return; }
+                const respHead = await this.timeoutFetch(testUrl, { method: 'HEAD', cache: 'no-store' }, 6000);
+                if (respHead && respHead.ok) { this.backendReady = true; try { this.updateBackendStatusUI(); } catch(_){} return; }
+                // Fallback GET se HEAD non ok
+                const respGet = await this.timeoutFetch(testUrl, { method: 'GET', cache: 'no-store' }, 9000);
+                if (respGet && respGet.ok) { this.backendReady = true; try { this.updateBackendStatusUI(); } catch(_){} return; }
             } catch (_) {}
-            await new Promise(r => setTimeout(r, 750 * (i + 1)));
+            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
         }
         await this.resolveApiBase();
+    }
+
+    // UI: mostra/nasconde banner stato backend
+    updateBackendStatusUI() {
+        try {
+            const el = document.getElementById('backend-status');
+            if (!el) return;
+            el.style.display = this.backendReady ? 'none' : '';
+        } catch (_) {}
     }
 
     // ===== Backend Settings API helpers =====

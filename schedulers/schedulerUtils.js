@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const TZ = 'Europe/Rome';
-const LOGS_DIR = path.join(process.cwd(), 'logs');
+const LOGS_DIR = process.env.LOG_DIR ? path.resolve(process.env.LOG_DIR) : path.join(process.cwd(), 'logs');
 const STATE_FILE = path.join(LOGS_DIR, 'scheduler_state.json');
 const SCHEDULER_LOG = path.join(LOGS_DIR, 'scheduler.log');
 

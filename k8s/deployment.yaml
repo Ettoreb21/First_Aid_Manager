@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fam-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fam-backend
+  template:
+    metadata:
+      labels:
+        app: fam-backend
+    spec:
+      containers:
+        - name: fam-backend
+          image: your-registry/first-aid-manager:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3000"
+            - name: COOKIE_SECURE
+              value: "true"
+            - name: COOKIE_SAMESITE
+              value: "none"
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: fam-secrets
+                  key: SESSION_SECRET
+            - name: DB_DIALECT
+              value: "postgres"
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: fam-secrets
+                  key: DB_HOST
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: fam-secrets
+                  key: DB_NAME
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: fam-secrets
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fam-secrets
+                  key: DB_PASSWORD
+            - name: BACKUPS_DIR
+              value: "/data/backups"
+            - name: LOG_DIR
+              value: "/var/log/fam"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - name: backups-vol
+              mountPath: /data
+            - name: logs-vol
+              mountPath: /var/log/fam
+      volumes:
+        - name: backups-vol
+          persistentVolumeClaim:
+            claimName: fam-backups-pvc
+        - name: logs-vol
+          persistentVolumeClaim:
+            claimName: fam-logs-pvc

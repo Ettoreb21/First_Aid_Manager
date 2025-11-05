@@ -177,3 +177,83 @@ Il test usa un client Resend mock per validare invio singolo, batch e rendering 
 ## Note
 - L'endpoint `/api/send-email` ora instrada verso Resend quando `EMAIL_PROVIDER=resend`, altrimenti usa Brevo (legacy).
 - Manteniamo compatibilità con `flushOutbox` di Brevo per non interrompere i flussi esistenti.
+
+---
+
+## Affidabilità & Error Handling (Frontend/Backend)
+
+Per evitare gli errori di rete ripetuti all’avvio (es. `net::ERR_ABORTED`, `net::ERR_FAILED`) quando il backend non è raggiungibile o è in wake-up:
+
+- Il frontend effettua un health check (`/api/health`) e imposta `app.backendReady` prima di eseguire chiamate dipendenti dal backend.
+- Le chiamate di startup a `/api/settings`, `/api/buttons`, `/api/materiali` e `auth/me` vengono eseguite solo quando `backendReady === true`.
+- La funzione `timeoutFetch` usa un timeout “soft” (senza `AbortController`) e restituisce risposte sintetiche 408 (timeout) o 503 (unreachable), con logging strutturato del tempo e dell’URL, evitando rumore in console.
+- Su GitHub Pages si evita il fallback `same-origin /api`: viene usato `window.FAM_API_BASE` (Render) come unica base API.
+
+### CORS e Cookie (Render)
+- Impostare `CORS_ORIGINS` includendo gli origin del frontend (es. `https://ettorebottin.github.io`).
+- `NODE_ENV=production`; `SESSION_SECRET` configurato.
+- Cookie cross-site: `COOKIE_SECURE=true`, `COOKIE_SAMESITE=None`.
+
+### Verifica locale
+- Eseguire `npm test` per validare `/api/health` e la preflight `OPTIONS` su `/api/auth/login` (porta 3004).
+- Aprire il preview locale e verificare in console `app.backendReady`; quando è `false`, il frontend non effettua chiamate verso `/api/...`.
+
+---
+
+# Deploy su Render (Produzione)
+
+Questa sezione definisce requisiti tecnici, configurazione, build/deploy automatici e monitoraggio per l'ambiente di produzione su Render.
+
+## Requisiti runtime
+- `NODE_VERSION=18.x` (LTS consigliata, compatibile con dipendenze attuali)
+- `PORT` fornita da Render (iniettata automaticamente); il server legge `process.env.PORT`
+- Health check: `GET/HEAD /api/health` (attivo e idempotente)
+
+## Variabili di ambiente (produzione)
+- Sicurezza e CORS
+  - `NODE_ENV=production`
+  - `SESSION_SECRET` (obbligatoria, valore robusto)
+  - `CORS_ORIGINS=https://ettorebottin.github.io` (aggiungere eventuali altri origin)
+  - `COOKIE_SAMESITE=None`
+  - `COOKIE_SECURE=true`
+- Email provider (scegliere uno):
+  - `EMAIL_PROVIDER=brevo` oppure `EMAIL_PROVIDER=resend` (default: brevo)
+  - Brevo: `BREVO_API_KEY` (secret), `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`, opzionale SMTP `BREVO_SMTP_*`
+  - Resend: `RESEND_API_KEY` (secret), `RESEND_FROM_EMAIL`, `RESEND_FROM_NAME`
+- Logging
+  - `LOG_LEVEL=info` (valori: error, warn, info, debug)
+- Database (scegliere uno):
+  - SQLite: `DB_DIALECT=sqlite`, `DB_SQLITE_PATH=./data/materials.sqlite` (richiede Persistent Disk)
+  - Postgres: `DB_DIALECT=postgres` e credenziali `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
+
+## Build e start (Render)
+- Build command: `npm ci`
+- Start command: `node server.js`
+- Health check path: `/api/health` (Render lo usa per determinare l’uptime del servizio)
+
+## Persistent Disk (SQLite)
+- Se si usa SQLite in produzione, attivare un Persistent Disk su Render (es. 1GB) e usare percorso `./data/materials.sqlite`.
+- Il percorso effettivo su Render è sotto `~/project/src/`; assicurarsi che la cartella `data/` esista o venga creata al boot.
+
+## Auto-deploy e CI/CD
+- Auto-deploy: attivare “Auto deploy” su Render per il branch `main` del repository GitHub collegato.
+- CI GitHub Actions: presente workflow `./.github/workflows/ci.yml` che esegue i test su push/PR.
+- Deploy Hook (opzionale): impostare il secret `RENDER_DEPLOY_HOOK` su GitHub per triggerare deploy da Actions.
+
+## Monitoraggio e Logging
+- Health check applicativo: `HEAD https://<render-app>/api/health` deve rispondere `200`.
+- Preflight CORS: `OPTIONS https://<render-app>/api/auth/login` con header `Origin` dell’app deve rispondere `204/200` e includere `access-control-allow-origin`.
+- Log applicativi:
+  - Email: `logs/email_deliveries.log`, `logs/email_errors.log` (rotazione manuale o integrazione esterna)
+  - Console: visibile nel dashboard Render; impostare `LOG_LEVEL` per granularità
+
+## Checklist di verifica post-deploy
+- Apri `https://ettorebottin.github.io/First_Aid_Manager/` e verifica assenza di `net::ERR_FAILED` in console.
+- Esegui `curl -I https://first-aid-manager.onrender.com/api/health` e verifica `HTTP/2 200`.
+- Testa login/logout e CRUD materiali; cookie devono essere `Secure` e `SameSite=None`.
+- Se il backend entra in sleep, il primo `HEAD` può impiegare qualche secondo; il frontend ha retry/backoff.
+
+## Note operative
+- In caso di lentezza al wake-up su Render, aumenta il timeout del health check o esegui un `GET /api/health` dopo il `HEAD`.
+- Mantieni `CORS_ORIGINS` allineato agli origin reali (GitHub Pages e eventuali domini custom).
+- Evita di esporre le chiavi nelle issue o nel codice: usa sempre i “Secret” del dashboard Render e di GitHub.

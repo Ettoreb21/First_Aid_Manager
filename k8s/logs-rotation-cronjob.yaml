@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: fam-logs-rotation
+spec:
+  schedule: "0 4 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: logs-rotator
+              image: alpine:3.19
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  LOG_DIR=${LOG_DIR:-/var/log/fam}
+                  RET=${LOG_RETENTION_DAYS:-30}
+                  mkdir -p "$LOG_DIR"
+                  # Comprimi file .log più vecchi di 1 giorno
+                  find "$LOG_DIR" -type f -name "*.log" -mtime +1 -exec gzip -f {} \;
+                  # Elimina file compressi più vecchi della retention
+                  find "$LOG_DIR" -type f \( -name "*.log" -o -name "*.log.gz" -o -name "*.json" -o -name "*.json.gz" \) -mtime +$RET -exec rm -f {} \;
+                  echo "Rotazione/compressione log completata"
+              env:
+                - name: LOG_DIR
+                  value: "/var/log/fam"
+                - name: LOG_RETENTION_DAYS
+                  value: "30"
+              volumeMounts:
+                - name: logs-vol
+                  mountPath: /var/log/fam
+          volumes:
+            - name: logs-vol
+              persistentVolumeClaim:
+                claimName: fam-logs-pvc

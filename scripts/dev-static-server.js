@@ -37,7 +37,9 @@ function serveFile(filePath, res) {
   });
 }
 
-const API_PORT = 3000;
+// Configurazione proxy API: porta e host configurabili via env (default 3002)
+const API_HOST = process.env.API_HOST || 'localhost';
+const API_PORT = parseInt(process.env.API_PORT, 10) || 3002;
 const server = http.createServer((req, res) => {
   try {
     const urlPath = decodeURIComponent(req.url.split('?')[0]);
@@ -52,7 +54,7 @@ const server = http.createServer((req, res) => {
     // Proxy API and backend requests to the Node server (uploads, settings, PDF endpoints)
     if (shouldProxy) {
       const options = {
-        hostname: 'localhost',
+        hostname: API_HOST,
         port: API_PORT,
         path: req.url,
         method: req.method,

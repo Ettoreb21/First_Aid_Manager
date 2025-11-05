@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: fam-backup-cron
+spec:
+  schedule: "0 3 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup-runner
+              image: your-registry/first-aid-manager:latest
+              command: ["node", "schedulers/backupRunOnce.js"]
+              env:
+                - name: DB_DIALECT
+                  value: "postgres"
+                - name: BACKUPS_DIR
+                  value: "/data/backups"
+                - name: DB_HOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: fam-secrets
+                      key: DB_HOST
+                - name: DB_PORT
+                  value: "5432"
+                - name: DB_NAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: fam-secrets
+                      key: DB_NAME
+                - name: DB_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: fam-secrets
+                      key: DB_USER
+                - name: DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: fam-secrets
+                      key: DB_PASSWORD
+              volumeMounts:
+                - name: backups-vol
+                  mountPath: /data
+          volumes:
+            - name: backups-vol
+              persistentVolumeClaim:
+                claimName: fam-backups-pvc
