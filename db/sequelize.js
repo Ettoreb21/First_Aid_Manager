@@ -20,17 +20,33 @@ function initSequelize() {
       logging: false,
     });
   } else {
-    const host = getEnv('DB_HOST', 'localhost');
-    const port = parseInt(getEnv('DB_PORT', '5432'), 10);
-    const database = getEnv('DB_NAME', 'materials_db');
-    const username = getEnv('DB_USER', 'postgres');
-    const password = getEnv('DB_PASSWORD', 'postgres');
-    sequelize = new Sequelize(database, username, password, {
-      host,
-      port,
-      dialect,
-      logging: false,
-    });
+    // Supporta DATABASE_URL (Render/Heroku) con SSL abilitato
+    const databaseUrl = getEnv('DATABASE_URL', '');
+    const isProd = String(getEnv('NODE_ENV', 'development')).toLowerCase() === 'production';
+    const sslRequired = isProd || String(getEnv('PG_SSL', '')).toLowerCase() === 'true';
+
+    if (databaseUrl) {
+      sequelize = new Sequelize(databaseUrl, {
+        dialect: 'postgres',
+        protocol: 'postgres',
+        logging: false,
+        dialectOptions: sslRequired ? { ssl: { require: true, rejectUnauthorized: false } } : {},
+      });
+    } else {
+      // Fallback su parametri individuali
+      const host = getEnv('DB_HOST', 'localhost');
+      const port = parseInt(getEnv('DB_PORT', '5432'), 10);
+      const database = getEnv('DB_NAME', 'materials_db');
+      const username = getEnv('DB_USER', 'postgres');
+      const password = getEnv('DB_PASSWORD', 'postgres');
+      sequelize = new Sequelize(database, username, password, {
+        host,
+        port,
+        dialect,
+        logging: false,
+        dialectOptions: sslRequired ? { ssl: { require: true, rejectUnauthorized: false } } : {},
+      });
+    }
   }
 
   // Load models
